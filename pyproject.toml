@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "pubmed_fetcher"
+version = "0.1.0"
+description = "CLI tool to fetch PubMed research papers with non-academic authors"
+authors = ["akhila <akhila@gmail.com>"]
+packages = [
+  { include = "pubmed_fetcher", from = "src" }
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "^2.32.4"
+lxml = "^6.0.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+get-papers-list = "pubmed_fetcher.cli:main"
+

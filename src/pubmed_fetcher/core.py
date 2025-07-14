@@ -1,12 +1,20 @@
 import requests
 import xml.etree.ElementTree as ET
-from typing import List, Dict, Optional
+from typing import Optional
 import csv
-from datetime import datetime
+
+
+def is_non_academic(affiliation: str) -> bool:
+    academic_keywords = [
+        "university", "college", "institute", "school", "hospital", "lab", "dept",
+        "center", "centre", "faculty", "public health", "government", "nhs",
+        ".edu", ".ac.", ".gov", ".org", "medical center", "foundation"
+    ]
+    return not any(keyword in affiliation.lower() for keyword in academic_keywords)
 
 
 def fetch_papers(query: str, output_file: Optional[str] = None, debug: bool = False) -> None:
-    # Construct the search URL
+    # Step 1: Search PubMed
     search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     search_params = {
         "db": "pubmed",
@@ -24,7 +32,11 @@ def fetch_papers(query: str, output_file: Optional[str] = None, debug: bool = Fa
     if debug:
         print(f"Found {len(ids)} papers.")
 
-    # Fetch details for each paper
+    if not ids:
+        print("No papers found.")
+        return
+
+    # Step 2: Fetch paper details
     fetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     fetch_params = {
         "db": "pubmed",
@@ -52,8 +64,14 @@ def fetch_papers(query: str, output_file: Optional[str] = None, debug: bool = Fa
             if not affiliation_info:
                 continue
 
-            # Heuristic: check if the author is likely from a company
-            if not any(keyword in affiliation_info.lower() for keyword in ["university", "college", "institute", "school", "hospital", "lab"]):
+            # Extract email from affiliation
+            if "@" in affiliation_info and not email:
+                email_parts = [part for part in affiliation_info.split() if "@" in part]
+                if email_parts:
+                    email = email_parts[0].strip(";,")
+
+            # Check for non-academic affiliation
+            if is_non_academic(affiliation_info):
                 name_parts = []
                 if author.find("ForeName") is not None:
                     name_parts.append(author.find("ForeName").text)
@@ -64,26 +82,29 @@ def fetch_papers(query: str, output_file: Optional[str] = None, debug: bool = Fa
                     non_academic_authors.append(full_name)
                 companies.append(affiliation_info)
 
-            if "@" in affiliation_info and not email:
-                email = affiliation_info.split()[-1]  # crude but works for basic cases
+        # Only include papers with at least one non-academic author
+        if non_academic_authors:
+            results.append({
+                "PubmedID": pmid,
+                "Title": title,
+                "Publication Date": pub_date,
+                "Non-academic Author(s)": "; ".join(non_academic_authors),
+                "Company Affiliation(s)": "; ".join(set(companies)),
+                "Corresponding Author Email": email
+            })
 
-        results.append({
-            "PubmedID": pmid,
-            "Title": title,
-            "Publication Date": pub_date,
-            "Non-academic Author(s)": "; ".join(non_academic_authors),
-            "Company Affiliation(s)": "; ".join(set(companies)),
-            "Corresponding Author Email": email
-        })
-
-    if output_file:
-        with open(output_file, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=results[0].keys())
-            writer.writeheader()
-            writer.writerows(results)
-        if debug:
-            print(f"Saved results to {output_file}")
+    # Step 3: Output
+    if results:
+        if output_file:
+            with open(output_file, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=results[0].keys())
+                writer.writeheader()
+                writer.writerows(results)
+            if debug:
+                print(f"Saved results to {output_file}")
+        else:
+            for row in results:
+                print(row)
     else:
-        for row in results:
-            print(row)
+        print("No matching non-academic papers found.")
 
